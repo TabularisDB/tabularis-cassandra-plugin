@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      cassandra:
+        image: cassandra:5.0
+        ports:
+          - 9042:9042
+        options: >-
+          --health-cmd "cqlsh -e 'DESCRIBE KEYSPACES' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x scripts/exercise-plugin.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and build output
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cqlsh
+        run: pip install cqlsh
+
+      - name: Wait for Cassandra
+        run: |
+          for i in $(seq 1 30); do
+            cqlsh 127.0.0.1 9042 -e "DESCRIBE KEYSPACES" && break
+            echo "Waiting for Cassandra ($i/30)..."; sleep 5
+          done
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint (clippy)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build (debug)
+        run: cargo build --verbose
+
+      - name: Run unit tests
+        run: cargo test --verbose
+
+      - name: Functional smoke test (debug build)
+        run: ./scripts/exercise-plugin.sh
+        env:
+          CASSANDRA_HOST: 127.0.0.1
+
+      - name: Build (release)
+        run: cargo build --release --verbose
+
+      - name: Functional smoke test (release build)
+        run: ./scripts/exercise-plugin.sh --release
+        env:
+          CASSANDRA_HOST: 127.0.0.1
+
+      - name: Upload release binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tabularis-cassandra-plugin-linux-x64
+          path: target/release/tabularis-cassandra-plugin

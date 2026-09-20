@@ -1,0 +1,95 @@
+{
+  "$schema": "https://registry.tabularis.dev/manifest.schema.json?kind=driver",
+  "name": "cassandra",
+  "version": "0.1.0",
+  "description": "Browse and query Apache Cassandra and ScyllaDB over CQL: keyspaces, tables, paged queries, and row editing.",
+  "category": "database",
+  "kind": "driver",
+  "tags": ["cassandra", "scylladb", "cql", "wide-column", "database", "nosql"],
+  "license": "Apache-2.0",
+  "engine": "cassandra",
+  "paradigms": ["sql"],
+  "readme": "README.md",
+  "documentation_url": "https://github.com/TabularisDB/tabularis-cassandra-plugin#readme",
+  "homepage": "https://github.com/TabularisDB/tabularis-cassandra-plugin",
+  "support": {
+    "issues_url": "https://github.com/TabularisDB/tabularis-cassandra-plugin/issues"
+  },
+  "executable": "tabularis-cassandra-plugin",
+  "default_port": 9042,
+  "capabilities": {
+    "schemas": false,
+    "views": false,
+    "materialized_views": false,
+    "routines": false,
+    "triggers": false,
+    "file_based": false,
+    "folder_based": false,
+    "no_connection_required": false,
+    "connection_string": false,
+    "identifier_quote": "\"",
+    "sql_dialect": "generic",
+    "alter_primary_key": false,
+    "manage_tables": false,
+    "readonly": false,
+    "explain": false,
+    "supports_ssl": false
+  },
+  "settings": [
+    {
+      "key": "local_datacenter",
+      "label": "Local datacenter",
+      "type": "string",
+      "required": true,
+      "default": "datacenter1",
+      "description": "Must match a datacenter name in the cluster (e.g. \"datacenter1\" for a single-DC Cassandra cluster, or your ScyllaDB DC name). Required by the driver's default load-balancing policy."
+    },
+    {
+      "key": "consistency_level",
+      "label": "Consistency level",
+      "type": "select",
+      "options": ["ANY", "ONE", "TWO", "THREE", "QUORUM", "ALL", "LOCAL_QUORUM", "EACH_QUORUM", "LOCAL_ONE"],
+      "default": "LOCAL_QUORUM"
+    },
+    {
+      "key": "request_timeout_ms",
+      "label": "Request timeout (ms)",
+      "type": "number",
+      "default": 10000
+    },
+    {
+      "key": "scylla_shard_aware",
+      "label": "Cluster is ScyllaDB (informational)",
+      "type": "boolean",
+      "default": false,
+      "description": "Marks the connection as ScyllaDB for diagnostics. Shard-aware port routing is not yet implemented - see README."
+    }
+  ],
+  "data_types": [
+    { "name": "ASCII", "category": "string", "requires_length": false, "requires_precision": false },
+    { "name": "TEXT", "category": "string", "requires_length": false, "requires_precision": false },
+    { "name": "VARCHAR", "category": "string", "requires_length": false, "requires_precision": false },
+    { "name": "INET", "category": "string", "requires_length": false, "requires_precision": false },
+    { "name": "BOOLEAN", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "TINYINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "SMALLINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "INT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "BIGINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "VARINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "COUNTER", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "FLOAT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "DOUBLE", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "DECIMAL", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "TIMESTAMP", "category": "date", "requires_length": false, "requires_precision": false },
+    { "name": "DATE", "category": "date", "requires_length": false, "requires_precision": false },
+    { "name": "TIME", "category": "date", "requires_length": false, "requires_precision": false },
+    { "name": "DURATION", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "BLOB", "category": "binary", "requires_length": false, "requires_precision": false },
+    { "name": "UUID", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "TIMEUUID", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "LIST", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "SET", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "MAP", "category": "other", "requires_length": false, "requires_precision": false },
+    { "name": "TUPLE", "category": "other", "requires_length": false, "requires_precision": false }
+  ]
+}

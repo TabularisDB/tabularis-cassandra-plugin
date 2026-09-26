@@ -70,13 +70,13 @@ cat > "$REQUESTS_FILE" <<JSONRPC
 {"jsonrpc":"2.0","method":"test_connection","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"}},"id":2}
 {"jsonrpc":"2.0","method":"get_databases","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"}},"id":3}
 {"jsonrpc":"2.0","method":"get_tables","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":null},"id":4}
-{"jsonrpc":"2.0","method":"get_columns","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":null,"table":"widgets"},"id":5}
-{"jsonrpc":"2.0","method":"get_indexes","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":null,"table":"widgets"},"id":6}
-{"jsonrpc":"2.0","method":"insert_record","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":null,"table":"widgets","data":{"id":"$ROW_ID","name":"ci-row","weight":2.5}},"id":7}
+{"jsonrpc":"2.0","method":"get_columns","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":"$KEYSPACE","table":"widgets"},"id":5}
+{"jsonrpc":"2.0","method":"get_indexes","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":"$KEYSPACE","table":"widgets"},"id":6}
+{"jsonrpc":"2.0","method":"insert_record","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":"$KEYSPACE","table":"widgets","data":{"id":"$ROW_ID","name":"ci-row","weight":2.5}},"id":7}
 {"jsonrpc":"2.0","method":"execute_query","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"query":"SELECT * FROM widgets","page":1,"page_size":1},"id":8}
 {"jsonrpc":"2.0","method":"execute_query","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"query":"SELECT * FROM widgets","page":2,"page_size":1},"id":9}
-{"jsonrpc":"2.0","method":"update_record","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":null,"table":"widgets","pk_col":"id","pk_val":"$ROW_ID","col_name":"weight","new_val":3.5},"id":10}
-{"jsonrpc":"2.0","method":"delete_record","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":null,"table":"widgets","pk_col":"id","pk_val":"$ROW_ID"},"id":11}
+{"jsonrpc":"2.0","method":"update_record","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":"$KEYSPACE","table":"widgets","pk_map":{"id":"$ROW_ID"},"col_name":"weight","new_val":3.5},"id":10}
+{"jsonrpc":"2.0","method":"delete_record","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"},"schema":"$KEYSPACE","table":"widgets","pk_map":{"id":"$ROW_ID"}},"id":11}
 {"jsonrpc":"2.0","method":"ping","params":{"params":{"host":"$CASSANDRA_HOST","port":$CASSANDRA_PORT,"database":"$KEYSPACE"}},"id":12}
 JSONRPC
 

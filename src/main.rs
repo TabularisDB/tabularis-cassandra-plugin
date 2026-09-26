@@ -1308,9 +1308,9 @@ fn json_to_cql_value(
                 .ok_or_else(|| type_mismatch("a string", value))?
                 .to_string(),
         ),
-        NativeType::Boolean => CqlValue::Boolean(
-            json_as_bool(value).ok_or_else(|| type_mismatch("a boolean", value))?,
-        ),
+        NativeType::Boolean => {
+            CqlValue::Boolean(json_as_bool(value).ok_or_else(|| type_mismatch("a boolean", value))?)
+        }
         NativeType::Int => CqlValue::Int(
             json_as_i64(value).ok_or_else(|| type_mismatch("a number", value))? as i32,
         ),

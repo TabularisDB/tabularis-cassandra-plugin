@@ -244,6 +244,28 @@ async fn handle(state: &AppState, request: RpcRequest) -> Result<serde_json::Val
             Ok(serde_json::json!(tables))
         }
 
+        // Views, routines, and triggers: our .tabularium declares
+        // capabilities.views/routines/triggers as false because CQL has no
+        // equivalent concept, but Tabularis's schema-tree loader (see
+        // DatabaseProvider.tsx's loadDatabaseData/loadSchemaData) checks a
+        // *different* capabilities source than the connection form does - one
+        // that's only populated for plugins implementing the newer, opt-in
+        // get_connection_metadata RPC, which we don't. For a plugin like ours
+        // that only declares capabilities statically, that check reads as
+        // "unknown" rather than "false", so the loader calls these methods
+        // anyway ("legacy" fallback behavior). Before this fix, that produced
+        // an unhandled "Method not found" rejection for get_views (it's the
+        // one call site with no .catch()), which failed the whole
+        // Promise.all(...) that get_tables was bundled into - silently
+        // wiping the just-fetched table list back to empty, with nothing
+        // but a console.error the UI never surfaces. Confirmed directly via
+        // Tabularis's own devtools (launched with --debug). Returning empty
+        // arrays here - correct, since none of these exist in CQL - stops
+        // that rejection at the source.
+        "get_views" => Ok(serde_json::json!([])),
+        "get_routines" => Ok(serde_json::json!([])),
+        "get_triggers" => Ok(serde_json::json!([])),
+
         "get_columns" => {
             let params = extract_connection_params(&request.params)?;
             let schema_filter = extract_schema_filter(&request.params);
@@ -267,6 +289,17 @@ async fn handle(state: &AppState, request: RpcRequest) -> Result<serde_json::Val
             let indexes = list_indexes(session.as_ref(), &keyspace, &table_name).await?;
             Ok(serde_json::json!(indexes))
         }
+
+        // CQL has no foreign key constraint concept, so there's nothing to
+        // list - but unlike get_views/get_routines/get_triggers, Tabularis's
+        // SidebarTableItem.tsx calls get_columns/get_foreign_keys/get_indexes
+        // together in one Promise.all with no capability gating and no
+        // .catch() on any of them. Leaving this unimplemented meant every
+        // click on a table failed with "Method not found: get_foreign_keys"
+        // and threw away the correctly-fetched columns and indexes right
+        // alongside it - the same silent-Promise.all-rejection failure mode
+        // as the get_views bug, just one click deeper in the tree.
+        "get_foreign_keys" => Ok(serde_json::json!([])),
 
         "execute_query" => {
             let params = extract_connection_params(&request.params)?;
@@ -459,20 +492,43 @@ fn extract_data(
 // Shared by update_record and delete_record - both identify a row the same
 // way, via a single primary-key column/value pair (see the composite-key
 // note on require_single_column_primary_key below).
+// PLUGIN_GUIDE.md documents update_record/delete_record as carrying flat
+// pk_col/pk_val fields - but a real error message (deliberately made to
+// echo back the request's top-level keys, see lesson 13 in progress-notes)
+// showed Tabularis's actual grid sends a `pk_map` object instead, e.g.
+// `{"name": "Faker"}`. That's arguably a *better* shape than what's
+// documented - a map of column -> value naturally extends to a composite
+// primary key, which a single pk_col/pk_val pair structurally can't
+// express - but for now this keeps the existing single-column-only
+// behavior (matching require_single_column_primary_key's table-schema-side
+// check), by requiring pk_map to have exactly one entry. Supporting a real
+// multi-entry pk_map for composite-key tables is a natural follow-up, not
+// done here to keep this fix scoped to "unblock what already worked
+// before" rather than changing behavior mid-fix.
 fn extract_pk(params: &serde_json::Value) -> Result<(String, serde_json::Value), RpcError> {
-    let pk_col = params
-        .get("pk_col")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    let pk_map = params
+        .get("pk_map")
+        .and_then(|v| v.as_object())
         .ok_or_else(|| RpcError {
             code: -32602,
-            message: "Missing required param: pk_col".to_string(),
+            message: "Missing required param: pk_map".to_string(),
         })?;
-    let pk_val = params.get("pk_val").cloned().ok_or_else(|| RpcError {
+
+    let mut entries = pk_map.iter();
+    let (pk_col, pk_val) = entries.next().ok_or_else(|| RpcError {
         code: -32602,
-        message: "Missing required param: pk_val".to_string(),
+        message: "pk_map is empty - no primary key column/value given".to_string(),
     })?;
-    Ok((pk_col, pk_val))
+    if entries.next().is_some() {
+        return Err(RpcError {
+            code: -32602,
+            message: format!(
+                "pk_map has {} columns - composite primary keys aren't supported for update/delete yet; use the query editor instead",
+                pk_map.len()
+            ),
+        });
+    }
+    Ok((pk_col.clone(), pk_val.clone()))
 }
 
 fn extract_update_fields(
@@ -822,6 +878,7 @@ async fn execute_query(
             "rows": Vec::<Vec<serde_json::Value>>::new(),
             "total_count": rows_seen,
             "execution_time_ms": 0,
+            "affected_rows": 0,
         }));
     }
 
@@ -863,6 +920,27 @@ async fn execute_query(
                 code: -32603,
                 message: format!("Query failed: {e}"),
             })?;
+
+        // Not every statement produces rows: DDL (CREATE/ALTER/DROP), a
+        // bare `USE keyspace`, or a raw INSERT/UPDATE/DELETE typed
+        // directly into the query editor (rather than run through
+        // insert_record/update_record/delete_record) all execute
+        // successfully but return a non-Rows result. `is_rows()` checks
+        // this without consuming `query_result`, so a legitimate non-Rows
+        // result short-circuits cleanly here instead of falling through
+        // to `into_rows_result()`, which would otherwise turn a
+        // successful statement into a spurious error - exactly what was
+        // happening before this fix (`CREATE KEYSPACE`/`USE` both
+        // executed for real, but were reported back as failures). CQL has
+        // no row/affected-row count for any of these, so the honest
+        // response is "it ran, there's nothing to page through," the same
+        // shape as a query with zero matching rows.
+        if !query_result.is_rows() {
+            exhausted = true;
+            next_page += 1;
+            paging_state = PagingState::start();
+            break;
+        }
 
         let rows_result = query_result.into_rows_result().map_err(|e| RpcError {
             code: -32603,
@@ -917,6 +995,7 @@ async fn execute_query(
         "rows": rows,
         "total_count": rows_seen,
         "execution_time_ms": 0,
+        "affected_rows": 0,
     }))
 }
 
@@ -975,7 +1054,16 @@ async fn insert_record(
             message: format!("Insert failed: {e}"),
         })?;
 
-    Ok(serde_json::Value::Null)
+    // PLUGIN_GUIDE.md documents this as "null on success," and that's what
+    // this used to return - but a real "invalid type: null, expected u64"
+    // failure from Tabularis's own host code, hit while inserting through
+    // the grid (not the query editor, which doesn't go through
+    // insert_record at all), showed the documented shape doesn't match
+    // what the host actually deserializes. update_record/delete_record
+    // already return a plain `1` for the same "CQL gives no real
+    // affected-row count" reason (see below) - matching that shape here
+    // instead of `null` is the fix.
+    Ok(serde_json::json!(1))
 }
 
 async fn update_record(
@@ -1221,40 +1309,26 @@ fn json_to_cql_value(
                 .to_string(),
         ),
         NativeType::Boolean => CqlValue::Boolean(
-            value
-                .as_bool()
-                .ok_or_else(|| type_mismatch("a boolean", value))?,
+            json_as_bool(value).ok_or_else(|| type_mismatch("a boolean", value))?,
         ),
         NativeType::Int => CqlValue::Int(
-            value
-                .as_i64()
-                .ok_or_else(|| type_mismatch("a number", value))? as i32,
+            json_as_i64(value).ok_or_else(|| type_mismatch("a number", value))? as i32,
         ),
-        NativeType::BigInt => CqlValue::BigInt(
-            value
-                .as_i64()
-                .ok_or_else(|| type_mismatch("a number", value))?,
-        ),
+        NativeType::BigInt => {
+            CqlValue::BigInt(json_as_i64(value).ok_or_else(|| type_mismatch("a number", value))?)
+        }
         NativeType::SmallInt => CqlValue::SmallInt(
-            value
-                .as_i64()
-                .ok_or_else(|| type_mismatch("a number", value))? as i16,
+            json_as_i64(value).ok_or_else(|| type_mismatch("a number", value))? as i16,
         ),
         NativeType::TinyInt => CqlValue::TinyInt(
-            value
-                .as_i64()
-                .ok_or_else(|| type_mismatch("a number", value))? as i8,
+            json_as_i64(value).ok_or_else(|| type_mismatch("a number", value))? as i8,
         ),
         NativeType::Float => CqlValue::Float(
-            value
-                .as_f64()
-                .ok_or_else(|| type_mismatch("a number", value))? as f32,
+            json_as_f64(value).ok_or_else(|| type_mismatch("a number", value))? as f32,
         ),
-        NativeType::Double => CqlValue::Double(
-            value
-                .as_f64()
-                .ok_or_else(|| type_mismatch("a number", value))?,
-        ),
+        NativeType::Double => {
+            CqlValue::Double(json_as_f64(value).ok_or_else(|| type_mismatch("a number", value))?)
+        }
         NativeType::Blob => {
             let s = value
                 .as_str()
@@ -1292,6 +1366,35 @@ fn type_mismatch(expected: &str, value: &serde_json::Value) -> RpcError {
         code: -32602,
         message: format!("Expected {expected}, got {value}"),
     }
+}
+
+// Tabularis's own record-editing grid sends every field as a JSON string
+// regardless of the target column's real type - discovered directly from a
+// real "Expected a number, got \"29\"" failure while inserting into an
+// `int` column through the UI, not assumed in advance. A plain
+// `value.as_i64()`/`as_f64()`/`as_bool()` check only accepts a *native*
+// JSON number/bool, so it rejects a perfectly valid `"29"` outright. These
+// three helpers add a string-parsing fallback on top of the native check,
+// so a value from the grid (a string) and a value from a JSON-typed API
+// caller (a native number/bool) both work the same way.
+fn json_as_i64(value: &serde_json::Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
+fn json_as_f64(value: &serde_json::Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
+fn json_as_bool(value: &serde_json::Value) -> Option<bool> {
+    value.as_bool().or_else(|| match value.as_str()?.trim() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    })
 }
 
 fn cql_type_name(typ: &ColumnType) -> String {

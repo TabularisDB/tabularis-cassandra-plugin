@@ -6,11 +6,6 @@ and **ScyllaDB**, written in Rust against ScyllaDB's own
 against the [Cassandra/ScyllaDB plugin bounty](https://tabularis.dev/plugins/bounties):
 keyspaces, tables, paged CQL queries, and row editing.
 
-This is a Rust rewrite of an earlier Java+GraalVM prototype
-([tabularis-cassandra-plugin (Java)](https://github.com/Mohamed-Fameen/tabularis-cassandra-plugin)),
-switched to for ScyllaDB's own shard-aware/tablet-aware driver, native
-compilation with no reflection-metadata step, and a lighter runtime.
-
 ## Status
 
 Implements:
@@ -19,7 +14,10 @@ Implements:
   `request_timeout_ms`/`scylla_shard_aware` from the manifest's `settings`),
   `test_connection`, `ping`
 - **Schema browsing**: `get_databases` (keyspaces), `get_tables`, `get_columns`,
-  `get_indexes`
+  `get_indexes`. `get_views`, `get_routines`, `get_triggers`, and
+  `get_foreign_keys` are implemented as no-ops returning an empty list,
+  since CQL has none of these concepts - see "Known limitations" for why
+  they're implemented at all rather than just declared unsupported
 - **Querying**: `execute_query` with CQL-native forward paging (see below)
 - **Row editing**: `insert_record`, `update_record`, `delete_record` (single-
   column primary keys only - see "Known limitations")
@@ -96,8 +94,12 @@ cp target/release/tabularis-cassandra-plugin ~/.local/share/tabularis/plugins/ca
 cp .tabularium ~/.local/share/tabularis/plugins/cassandra/
 ```
 
-(Windows: see Tabularis's own docs for the equivalent plugin data directory;
-the binary will be `tabularis-cassandra-plugin.exe`.)
+```powershell
+# Windows
+mkdir "$env:APPDATA\tabularis\plugins\cassandra"
+copy target\release\tabularis-cassandra-plugin.exe "$env:APPDATA\tabularis\plugins\cassandra\"
+copy .tabularium "$env:APPDATA\tabularis\plugins\cassandra\"
+```
 
 ## Manual protocol testing
 
@@ -146,6 +148,19 @@ true total until the query is actually exhausted.
 
 ## Known limitations
 
+- **Views, routines, triggers, and foreign keys don't exist in CQL**, so
+  `get_views`/`get_routines`/`get_triggers`/`get_foreign_keys` always return
+  an empty list. They're implemented (not just declared `false` in
+  `.tabularium`) because Tabularis's schema-tree UI calls some of these
+  unconditionally - in the same batched request as calls this plugin *does*
+  need to succeed (`get_tables`, or `get_columns`/`get_indexes` when
+  expanding a table). A driver that returns "Method not found" for any one
+  call in that batch fails the whole batch, silently discarding the good
+  results too (with nothing shown in the UI - Tabularis only logs it to the
+  browser console). Concretely: leaving `get_views` unimplemented meant no
+  table ever appeared under any keyspace, and leaving `get_foreign_keys`
+  unimplemented meant expanding a table never showed its columns. Returning
+  an empty list for each keeps those batches alive.
 - **Composite primary keys and row editing.** Tabularis's `update_record`/
   `delete_record` protocol identifies a row with a single `pk_col`/`pk_val`
   pair. CQL primary keys are frequently composite (partition key plus

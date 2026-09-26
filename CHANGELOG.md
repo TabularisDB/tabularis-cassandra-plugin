@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `execute_query`: a non-rows result (`CREATE KEYSPACE`, `USE`, and other
+  DDL) no longer fails with "Result is not of Rows kind" - the paging loop
+  now detects a non-rows result via `QueryResult::is_rows()` and treats it
+  as an exhausted, empty page instead of erroring
+- `execute_query`'s response now includes the `affected_rows` field
+  Tabularis's host expects; its absence previously failed deserialization
+  on the host side for every query
+- `insert_record` now returns `1` on success instead of `null` - the host
+  expects a row count (`u64`), the same as `update_record`/`delete_record`
+  already return, not `null`
+- `json_to_cql_value` now accepts stringified numbers and booleans (e.g.
+  `"29"`, `"true"`) for `int`/`bigint`/`smallint`/`tinyint`/`float`/
+  `double`/`boolean` columns - Tabularis's row-editing grid submits every
+  form field as a string, which previously failed with "Expected a number,
+  got ..."
+- `update_record`/`delete_record` now read the primary key from the
+  `pk_map` object Tabularis's host actually sends, instead of the
+  `pk_col`/`pk_val` pair `PLUGIN_GUIDE.md` documents - editing a row from
+  the grid previously failed every time with "Missing required param:
+  pk_col"
+- `get_views`, `get_routines`, `get_triggers`, and `get_foreign_keys` are
+  now implemented, returning an empty list instead of "Method not found" -
+  see the README's "Known limitations" for why this matters even though
+  CQL has none of these concepts: Tabularis's schema-tree UI calls some of
+  them unconditionally alongside `get_tables`/`get_columns`/`get_indexes`
+  in a single batched request, and any one of them returning an RPC error
+  silently discarded the whole batch's results - including tables and
+  columns this plugin was already fetching correctly
+
 ## [0.1.0]
 
 Initial release.

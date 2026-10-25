@@ -2,7 +2,7 @@
   "$schema": "https://registry.tabularis.dev/manifest.schema.json?kind=driver",
   "id": "cassandra",
   "name": "Cassandra",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browse and query Apache Cassandra and ScyllaDB over CQL: keyspaces, tables, paged queries, and row editing.",
   "category": "database",
   "kind": "driver",
